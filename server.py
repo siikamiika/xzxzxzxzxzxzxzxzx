@@ -1,7 +1,8 @@
 import ctypes
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread
+from socketserver import ThreadingMixIn
+import string
 
 # ctypes code thanks http://stackoverflow.com/a/13615802/2444105
 
@@ -57,40 +58,35 @@ def ReleaseKey(hexKeyCode):
     SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
 
-def x_press():
-    PressKey(0x58)
-
-def x_release():
-    ReleaseKey(0x58)
-
-def z_press():
-    PressKey(0x5a)
-
-def z_release():
-    ReleaseKey(0x5a)
+def press_or_release(key):
+    if key.endswith('press'):
+        do = PressKey
+    elif key.endswith('release'):
+        do = ReleaseKey
+    else: return
+    code = ord(key[0].upper())
+    if 0x41 <= code <= 0x5A:
+        do(code)
 
 
-with open('index.html', 'rb') as f:
-    index = f.read()
+with open('index.html') as f:
+    index = string.Template(f.read())
 
 class TapHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        if self.path == '/x_press':
-            Thread(target=x_press).start()
-        elif self.path == '/x_release':
-            Thread(target=x_release).start()
-        elif self.path == '/z_press':
-            Thread(target=z_press).start()
-        elif self.path == '/z_release':
-            Thread(target=z_release).start()
+        press_or_release(self.path[1:])
         self.send_response(200)
         self.send_header('Content-Type', 'text/html')
         self.end_headers()
-        if self.path == '/':
-            self.wfile.write(index)
+        fn = {'/': 'zx.html', '/dfjk': 'dfjk.html'}.get(self.path)
+        if fn:
+            with open(fn) as f:
+                self.wfile.write(index.substitute({'content': f.read()}).encode())
 
+class TapServer(ThreadingMixIn, HTTPServer):
+    pass
 
 if __name__ =="__main__":
-    srv = HTTPServer(('', 8001), TapHandler)
+    srv = TapServer(('', 8001), TapHandler)
     srv.serve_forever()
